@@ -1,5 +1,6 @@
 from django.test import TestCase
 from django.urls import reverse
+from django.contrib.auth.models import User
 
 from ..models import Category, Post
 from ..forms import PostForm
@@ -96,8 +97,16 @@ class PostCreateViewTest(TestCase):
     def setUpTestData(cls):
         cls.test_category_name = "TestCategory"
         Category.objects.create(name=cls.test_category_name)
+        User.objects.create_user(
+            username="testuser",
+            email="test@example.com",
+            password="testpass")
+
+    def setUp(self):
+        self.client.login(username="testuser", password="testpass")
 
     def test_view_url_exists_at_desired_location(self):
+
         response = self.client.get("/post/new/")
         self.assertEqual(response.status_code, 200)
 
@@ -173,6 +182,13 @@ class PostCreateViewTest(TestCase):
         self.assertEqual(new_post.content, "New content")
         self.assertEqual(new_post.category, None)
 
+    def test_not_authenticated_user(self):
+        """ ログインしていないユーザーは投稿できず、ログインページにリダイレクトされること """
+        self.client.logout()
+        response = self.client.post(reverse("blog:post_create"))
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, "/accounts/login/?next=/post/new/")
+
 
 class PostUpdateViewTest(TestCase):
 
@@ -185,6 +201,13 @@ class PostUpdateViewTest(TestCase):
         Post.objects.create(title=cls.test_original_title,
                             content=cls.test_original_content,
                             category=test_category)
+        User.objects.create_user(
+            username="testuser",
+            email="test@example.com",
+            password="testpass")
+
+    def setUp(self):
+        self.client.login(username="testuser", password="testpass")
 
     def test_view_url_exists_at_desired_location(self):
         post_id = Post.objects.get(title=self.test_original_title).id
@@ -245,6 +268,17 @@ class PostUpdateViewTest(TestCase):
         self.assertEqual(updated_post.content, self.test_original_content)
         self.assertEqual(updated_post.category.id, category_id)
 
+    def test_not_authenticated_user(self):
+        """ ログインしていないユーザーは更新できず、ログインページにリダイレクトされること """
+        self.client.logout()
+        post_id = Post.objects.get(title=self.test_original_title).id
+        response = self.client.post(
+            reverse("blog:post_update", args=[post_id]))
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(
+            response,
+            f"/accounts/login/?next=/post/{post_id}/edit/")
+
 
 class PostDeleteViewTest(TestCase):
 
@@ -256,6 +290,13 @@ class PostDeleteViewTest(TestCase):
             title=cls.test_post_title,
             content="Content of the post",
             category=test_category)
+        User.objects.create_user(
+            username="testuser",
+            email="test@example.com",
+            password="testpass")
+
+    def setUp(self):
+        self.client.login(username="testuser", password="testpass")
 
     def test_view_url_exists_at_desired_location(self):
         post_id = Post.objects.get(title=self.test_post_title).id
@@ -274,14 +315,26 @@ class PostDeleteViewTest(TestCase):
         self.assertTemplateUsed(response, "blog/post_confirm_delete.html")
 
     def test_redirects_after_delete_post(self):
-        """ 投稿を削除した後に適切なページにリダイレクトするかテストする """
+        """ 投稿を削除した後に適切なページにリダイレクトすることï """
         post_id = Post.objects.get(title=self.test_post_title).id
         response = self.client.post(
             reverse("blog:post_delete", args=[post_id]))
         self.assertRedirects(response, reverse("blog:post_list"))
 
     def test_delete_post(self):
-        """ 投稿が実際に削除されるかテストする """
+        """ 投稿が実際に削除されること """
         post_id = Post.objects.get(title=self.test_post_title).id
         self.client.post(reverse("blog:post_delete", args=[post_id]))
         self.assertFalse(Post.objects.filter(id=post_id).exists())
+
+    def test_not_authenticated_user(self):
+        """ ログインしていないユーザーは削除できず、ログインページにリダイレクトされることï """
+        self.client.logout()
+        post_id = Post.objects.get(title=self.test_post_title).id
+        response = self.client.post(
+            reverse("blog:post_delete", args=[post_id]))
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(
+            response,
+            f"/accounts/login/?next=/post/{post_id}/delete/")
+        self.assertTrue(Post.objects.filter(id=post_id).exists())
